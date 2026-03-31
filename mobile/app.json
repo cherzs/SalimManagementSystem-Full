@@ -54,7 +54,8 @@
           ],
           "mode": "production"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "owner": "bimasurya00"
   }
