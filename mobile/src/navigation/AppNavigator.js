@@ -182,30 +182,38 @@ export default function AppNavigator() {
         sound: 'ringtone',
         vibrationPattern: [500, 500],
         lightColor: '#FF231F7C',
-      });
+      }).catch(e => console.warn('Notification channel error:', e));
     }
 
     const setAudioMode = async () => {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (e) {
+        console.warn('Audio mode error:', e);
+      }
     };
     setAudioMode();
   }, []);
 
   useEffect(() => {
     const registerForPushNotifications = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.warn('Notification permission not granted!');
-        return;
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Notification permission not granted!');
+          return;
+        }
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        console.log('Expo Push Token:', tokenData.data);
+      } catch (e) {
+        console.warn('Push notification error:', e);
       }
-      const tokenData = await Notifications.getExpoPushTokenAsync();
-      console.log('Expo Push Token:', tokenData.data);
     };
 
     registerForPushNotifications();

@@ -118,7 +118,7 @@ export default function LoginScreen({ navigation }) {
 
     try {
       const token = (await Notifications.getExpoPushTokenAsync({
-        projectId: 'e964b13b-18df-4a8d-82dc-df2808c5238c'
+        projectId: '471ce07a-663f-44df-b58c-984bb1257a2a'
       })).data;
 
       await registerPushToken(employeeId, token);
