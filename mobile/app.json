@@ -51,8 +51,7 @@
           "color": "#ffffff",
           "sounds": [
             "./assets/ringtone.mp3"
-          ],
-          "mode": "production"
+          ]
         }
       ],
       "expo-font"
