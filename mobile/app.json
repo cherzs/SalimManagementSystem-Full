@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -29,24 +29,18 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.jethroelijah.mobile",
-      "useNextNotificationsApi": true,
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "VIBRATE",
         "android.permission.FOREGROUND_SERVICE"
-      ],
-      "notification": {
-        "icon": "./assets/notification-icon.png",
-        "color": "#ffffff",
-        "sound": "ringtone"
-      }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "e964b13b-18df-4a8d-82dc-df2808c5238c"
+        "projectId": "471ce07a-663f-44df-b58c-984bb1257a2a"
       }
     },
     "plugins": [
@@ -61,6 +55,7 @@
           "mode": "production"
         }
       ]
-    ]
+    ],
+    "owner": "bimasurya00"
   }
 }
