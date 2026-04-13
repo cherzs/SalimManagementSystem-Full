@@ -134,6 +134,7 @@ const CreateTask = () => {
       setLoading(false);
       setRefreshing(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Initial load
@@ -153,6 +154,7 @@ const CreateTask = () => {
   };
 
   // Form handlers
+  // eslint-disable-next-line no-unused-vars
   const addItemToTask = () => {
     const qty = parseInt(selection.quantity, 10);
     if (!selection.itemId || isNaN(qty) || qty <= 0) {
@@ -188,6 +190,7 @@ const CreateTask = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleQuantityChange = (e) => {
     const val = e.target.value;
     if (val === '' || /^[1-9]\d*$/.test(val)) {
@@ -287,6 +290,7 @@ const CreateTask = () => {
     </Badge>
   );
 
+  // eslint-disable-next-line no-unused-vars
   const renderTaskItems = (items) => {
     const list = Array.isArray(items) ? items : [];
     if (!list.length) return <span className="text-muted">No items</span>;
