@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Container } from 'react-bootstrap';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
@@ -10,13 +9,11 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import CreateTask from './pages/CreateTask';
 import './index.css';
-import { login } from './/api';
-
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [, setError] = useState('');
 
   useEffect(() => {
     // Check if already logged in (e.g., from localStorage)

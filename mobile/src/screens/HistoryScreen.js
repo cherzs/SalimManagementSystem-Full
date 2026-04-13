@@ -1,4 +1,3 @@
-// HistoryScreen.js
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
@@ -10,16 +9,21 @@ import {
   StyleSheet,
   Animated,
   TouchableOpacity,
+  Platform,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getHistory } from '../api';
-import HistoryItem from '../components/HistoryItem';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useApp } from '../contexts/AppContext';
+import { COLORS, SPACING } from '../styles/common';
 
 const PAGE_SIZE = 10;
 const CACHE_HISTORY_KEY = 'history_cached_data';
 
-// Deep equality
 const deepEqual = (a, b) => {
   if (a === b) return true;
   if (a == null || b == null) return false;
@@ -33,7 +37,6 @@ const deepEqual = (a, b) => {
   return true;
 };
 
-// Cache helpers
 const loadFromCache = async () => {
   try {
     const raw = await AsyncStorage.getItem(CACHE_HISTORY_KEY);
@@ -52,37 +55,30 @@ const saveToCache = async (data) => {
 };
 
 export default function HistoryScreen({ route }) {
-  const { employeeId } = route.params;
+  const { isDarkMode, toggleTheme, employeeId, employeeName } = useApp();
   const [allHistory, setAllHistory] = useState([]);
   const [filtered, setFiltered] = useState([]);
-  const [history, setHistory] = useState([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
   const flatListRef = useRef(null);
 
   const startFadeIn = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+    ]).start();
   };
 
-  // Silent background refresh
   const backgroundRefresh = useCallback(async () => {
     if (refreshing || loading) return;
     setRefreshing(true);
-
     try {
       const data = await getHistory({ employeeId });
       const safeData = Array.isArray(data) ? data : [];
-
       if (!deepEqual(allHistory, safeData)) {
         setAllHistory(safeData);
         await saveToCache(safeData);
@@ -92,15 +88,13 @@ export default function HistoryScreen({ route }) {
     } finally {
       setRefreshing(false);
     }
-  }, [employeeId, allHistory, refreshing, loading]);
+  }, [allHistory, loading, refreshing, employeeId]);
 
-  // Manual pull-to-refresh (user-triggered)
   const onPullRefresh = async () => {
     setRefreshing(true);
     try {
       const data = await getHistory({ employeeId });
       const safeData = Array.isArray(data) ? data : [];
-
       setAllHistory(safeData);
       await saveToCache(safeData);
     } catch (error) {
@@ -110,11 +104,9 @@ export default function HistoryScreen({ route }) {
     }
   };
 
-  // Initial load
   const loadHistory = useCallback(async () => {
     setLoading(true);
     const cached = await loadFromCache();
-
     if (Array.isArray(cached)) {
       setAllHistory(cached);
       setFiltered(cached);
@@ -122,11 +114,9 @@ export default function HistoryScreen({ route }) {
       setLoading(false);
       startFadeIn();
     }
-
     try {
       const data = await getHistory({ employeeId });
       const safeData = Array.isArray(data) ? data : [];
-
       if (!deepEqual(cached, safeData)) {
         setAllHistory(safeData);
         await saveToCache(safeData);
@@ -143,204 +133,467 @@ export default function HistoryScreen({ route }) {
     loadHistory();
   }, [loadHistory]);
 
-  // Auto background refresh every 30s
   useEffect(() => {
     const interval = setInterval(backgroundRefresh, 30000);
     return () => clearInterval(interval);
   }, [backgroundRefresh]);
 
-  // Update paginated list
   useEffect(() => {
-    setHistory(filtered.slice(0, page * PAGE_SIZE));
-  }, [filtered, page]);
-
-  // Filter logic
-  useEffect(() => {
-    let result = allHistory;
-
-    if (query) {
-      const lower = query.toLowerCase();
-      result = result.filter(
-        item =>
-          (item.item_name || '').toString().toLowerCase().includes(lower) ||
-          (item.category || '').toString().toLowerCase().includes(lower)
-      );
-    }
-
-    if (fromDate || toDate) {
-      result = result.filter(item => {
-        if (!item.timestamp) return false;
-        let itemDateStr = '';
-        if (typeof item.timestamp === 'string' && item.timestamp.length >= 10) {
-          itemDateStr = item.timestamp.slice(0, 10);
-        } else {
-          const d = new Date(item.timestamp);
-          if (!isNaN(d)) itemDateStr = d.toISOString().slice(0, 10);
-        }
-        const fromOk = !fromDate || itemDateStr >= fromDate;
-        const toOk = !toDate || itemDateStr <= toDate;
-        return fromOk && toOk;
-      });
-    }
-
+    const lower = query.toLowerCase();
+    const result = allHistory.filter(
+      item =>
+        (item.employee_name || '').toLowerCase().includes(lower) ||
+        (item.item_name || '').toLowerCase().includes(lower) ||
+        (item.action || '').toLowerCase().includes(lower)
+    );
     setFiltered(result);
     setPage(1);
-  }, [query, fromDate, toDate, allHistory]);
+  }, [query, allHistory]);
 
-  const handleLoadMore = () => {
-    if (history.length < filtered.length) {
-      setPage(p => p + 1);
-    }
+  const loadMore = () => {
+    if (page * PAGE_SIZE >= filtered.length) return;
+    setPage(prev => prev + 1);
   };
 
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
 
-  // Loading UI
+  const renderItem = ({ item }) => {
+    const isDeduct = item.action === 'deduct';
+    return (
+      <View style={[styles.historyCard, isDarkMode && styles.historyCardDark]}>
+        <View style={styles.historyLeft}>
+          <View style={[styles.actionIcon, { backgroundColor: isDeduct ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)' }]}>
+            <Ionicons
+              name={isDeduct ? 'remove-circle' : 'add-circle'}
+              size={24}
+              color={isDeduct ? COLORS.danger : COLORS.success}
+            />
+          </View>
+          <View style={styles.historyInfo}>
+            <Text style={[styles.itemName, isDarkMode && styles.textLight]} numberOfLines={1}>
+              {item.item_name}
+            </Text>
+            <View style={styles.historyMeta}>
+              <Text style={[styles.metaText, isDarkMode && styles.textDimmed]}>
+                {item.employee_name}
+              </Text>
+              <Text style={[styles.metaDot, isDarkMode && styles.textDimmed]}>·</Text>
+              <Text style={[styles.metaText, isDarkMode && styles.textDimmed]}>
+                {formatDate(item.timestamp)}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.qtySection}>
+          <Text style={[styles.qty, isDeduct ? styles.qtyDeduct : styles.qtyRestock]}>
+            {isDeduct ? `-${item.qty}` : `+${item.qty}`}
+          </Text>
+          <Text style={[styles.actionLabel, isDarkMode && styles.textDimmed]}>
+            {item.action}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const ListHeader = () => (
+    <View>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={[styles.title, isDarkMode && styles.textLight]}>
+            History
+          </Text>
+          <Text style={[styles.subtitle, isDarkMode && styles.textDimmed]}>
+            Activity log for {employeeName}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={toggleTheme} style={styles.themeToggle}>
+          <Ionicons
+            name={isDarkMode ? 'sunny' : 'moon'}
+            size={22}
+            color={isDarkMode ? '#f8fafc' : '#1e293b'}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Refreshing Badge */}
+      {refreshing && !loading && (
+        <View style={styles.refreshBadge}>
+          <ActivityIndicator size="small" color="#ffffff" />
+          <Text style={styles.refreshBadgeText}>Updating...</Text>
+        </View>
+      )}
+
+      {/* Modern Search Box */}
+      <View style={[styles.searchBox, isDarkMode && styles.searchBoxDark]}>
+        <Ionicons name="search" size={20} color={isDarkMode ? '#94a3b8' : '#64748b'} />
+        <TextInput
+          placeholder="Search activity..."
+          placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
+          value={query}
+          onChangeText={setQuery}
+          style={[styles.searchInput, isDarkMode && styles.textLight]}
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => setQuery('')} style={{ padding: 4 }}>
+            <Ionicons name="close-circle" size={20} color={isDarkMode ? '#475569' : '#cbd5e1'} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Stats */}
+      <View style={[styles.statsCard, isDarkMode && styles.statsCardDark]}>
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, isDarkMode && styles.textDimmed]}>Total Records</Text>
+          <Text style={styles.statValue}>{filtered.length}</Text>
+        </View>
+        <View style={[styles.statDivider, isDarkMode && styles.statDividerDark]} />
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, isDarkMode && styles.textDimmed]}>Showing</Text>
+          <Text style={styles.statValue}>{Math.min(page * PAGE_SIZE, filtered.length)}</Text>
+        </View>
+      </View>
+
+      <Text style={[styles.sectionTitle, isDarkMode && styles.textLight]}>All Operations</Text>
+    </View>
+  );
+
+  const ListFooter = () => (
+    <View style={{ paddingBottom: 40 }}>
+      {page * PAGE_SIZE < filtered.length && (
+        <TouchableOpacity
+          style={[styles.loadMoreBtn, isDarkMode && styles.loadMoreBtnDark]}
+          onPress={loadMore}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.loadMoreText, isDarkMode && styles.textLight]}>
+            Load More ({(filtered.length - page * PAGE_SIZE).toString()} remaining)
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, isDarkMode && styles.loadingContainerDark]}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={[styles.loadingText, isDarkMode && styles.loadingTextDark]}>
-          Loading from cache…
-        </Text>
-      </View>
+      <SafeAreaView style={[styles.rootContainer, isDarkMode && styles.rootContainerDark]} edges={['top', 'left', 'right']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size={40} color={COLORS.primary} />
+          <Text style={[styles.loadingText, isDarkMode && styles.textDimmed]}>
+            Loading history...
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, isDarkMode && styles.titleDark]}>My History</Text>
-        <TouchableOpacity onPress={toggleTheme}>
-          <Ionicons name={isDarkMode ? 'sunny' : 'moon'} size={24} color={isDarkMode ? '#fff' : '#1f2937'} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Subtle Refresh Badge (background sync) */}
-      {refreshing && !loading && (
-        <View style={styles.refreshBadge}>
-          <ActivityIndicator size="small" color="#fff" />
-          <Text style={styles.refreshText}>Updating…</Text>
-        </View>
-      )}
-
-      {/* Filters */}
-      <View style={styles.filterRow}>
-        <View style={styles.filterCol}>
-          <Text style={[styles.filterLabel, isDarkMode && styles.filterLabelDark]}>From</Text>
-          <View style={[styles.filterInputContainer, isDarkMode && styles.filterInputContainerDark]}>
-            <Ionicons name="calendar-outline" size={20} color={isDarkMode ? '#9ca3af' : '#6b7280'} />
-            <TextInput
-              style={[styles.filterInput, isDarkMode && styles.filterInputDark]}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={isDarkMode ? '#9ca3af' : '#6b7280'}
-              value={fromDate}
-              onChangeText={setFromDate}
-              keyboardType="numeric"
-              maxLength={10}
-            />
+    <SafeAreaView style={[styles.rootContainer, isDarkMode && styles.rootContainerDark]} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            <Animated.View style={{ opacity: fadeAnim, flex: 1, transform: [{ translateY: slideAnim }] }}>
+              <FlatList
+                ref={flatListRef}
+                data={filtered.slice(0, page * PAGE_SIZE)}
+                keyExtractor={item => item.id || item.timestamp.toString()}
+                renderItem={renderItem}
+                ListHeaderComponent={ListHeader}
+                ListFooterComponent={ListFooter}
+                contentContainerStyle={styles.listContent}
+                keyboardShouldPersistTaps="handled"
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onPullRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <Ionicons name="time-outline" size={60} color={isDarkMode ? '#334155' : '#e2e8f0'} />
+                    <Text style={[styles.emptyStateText, isDarkMode && styles.textDimmed]}>
+                      {query ? 'No history matches your search.' : 'No activity recorded yet.'}
+                    </Text>
+                  </View>
+                }
+              />
+            </Animated.View>
           </View>
-        </View>
-        <View style={styles.filterCol}>
-          <Text style={[styles.filterLabel, isDarkMode && styles.filterLabelDark]}>Until</Text>
-          <View style={[styles.filterInputContainer, isDarkMode && styles.filterInputContainerDark]}>
-            <Ionicons name="calendar-outline" size={20} color={isDarkMode ? '#9ca3af' : '#6b7280'} />
-            <TextInput
-              style={[styles.filterInput, isDarkMode && styles.filterInputDark]}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={isDarkMode ? '#9ca3af' : '#6b7280'}
-              value={toDate}
-              onChangeText={setToDate}
-              keyboardType="numeric"
-              maxLength={10}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Search */}
-      <View style={[styles.searchContainer, isDarkMode && styles.searchContainerDark]}>
-        <Ionicons name="search" size={20} color={isDarkMode ? '#9ca3af' : '#6b7280'} />
-        <TextInput
-          placeholder="Search by item name..."
-          placeholderTextColor={isDarkMode ? '#9ca3af' : '#6b7280'}
-          value={query}
-          onChangeText={setQuery}
-          style={[styles.input, isDarkMode && styles.inputDark]}
-        />
-      </View>
-
-      {/* List with Pull-to-Refresh */}
-      <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-        <FlatList
-          ref={flatListRef}
-          data={history}
-          keyExtractor={item => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={[styles.historyItemContainer, isDarkMode && styles.historyItemContainerDark]}>
-              <HistoryItem item={item} />
-            </View>
-          )}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onPullRefresh}
-              colors={['#6366f1']}
-              tintColor="#6366f1"
-              progressBackgroundColor={isDarkMode ? '#374151' : '#ffffff'}
-            />
-          }
-          ListEmptyComponent={
-            <Text style={[styles.emptyText, isDarkMode && styles.emptyTextDark]}>
-              No history found.
-            </Text>
-          }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          contentContainerStyle={history.length === 0 ? { flex: 1, justifyContent: 'center' } : { paddingBottom: 40 }}
-        />
-      </Animated.View>
-    </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-// Styles (unchanged)
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#f3f4f6' },
-  containerDark: { backgroundColor: '#1f2937' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1f2937' },
-  titleDark: { color: '#f9fafb' },
+  rootContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  rootContainerDark: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  listContent: {
+    padding: SPACING.lg,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
+  },
+  themeToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   refreshBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6366f1',
-    alignSelf: 'center',
+    backgroundColor: COLORS.primary,
+    alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    marginBottom: 20,
+  },
+  refreshBadgeText: {
+    color: '#ffffff',
+    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    height: 56,
+    marginBottom: 24,
+    shadowColor: '#94a3b8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  searchBoxDark: {
+    backgroundColor: '#1e293b',
+    borderColor: '#334155',
+    shadowOpacity: 0.2,
+    shadowColor: '#000',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#0f172a',
+  },
+  statsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 16,
+    marginBottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  statsCardDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    borderColor: 'rgba(51, 65, 85, 0.8)',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    height: '80%',
+    alignSelf: 'center',
+  },
+  statDividerDark: {
+    backgroundColor: '#334155',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
     marginBottom: 16,
   },
-  refreshText: { color: '#fff', marginLeft: 8, fontWeight: '600' },
-  filterRow: { flexDirection: 'row', marginBottom: 16, gap: 12 },
-  filterCol: { flex: 1 },
-  filterLabel: { fontSize: 14, fontWeight: '500', color: '#6b7280', marginBottom: 6, marginLeft: 4 },
-  filterLabelDark: { color: '#9ca3af' },
-  filterInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#e5e7eb', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  filterInputContainerDark: { backgroundColor: '#374151', borderColor: '#4b5563' },
-  filterInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#1f2937' },
-  filterInputDark: { color: '#f9fafb' },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: '#e5e7eb', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  searchContainerDark: { backgroundColor: '#374151', borderColor: '#4b5563' },
-  input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#1f2937' },
-  inputDark: { color: '#f9fafb' },
-  emptyText: { color: '#6b7280', textAlign: 'center', fontSize: 16, marginTop: 30 },
-  emptyTextDark: { color: '#9ca3af' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
-  loadingContainerDark: { backgroundColor: '#1f2937' },
-  loadingText: { marginTop: 12, fontSize: 16, color: '#1f2937' },
-  loadingTextDark: { color: '#f9fafb' },
-  historyItemContainer: { backgroundColor: '#ffffff', borderRadius: 12, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#6366f1', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
-  historyItemContainerDark: { backgroundColor: '#374151', borderLeftColor: '#818cf8' },
+  historyCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    shadowColor: '#94a3b8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  historyCardDark: {
+    backgroundColor: '#1f2937',
+    borderColor: '#334155',
+  },
+  historyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  historyMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metaText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  metaDot: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginHorizontal: 6,
+  },
+  qtySection: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  qty: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  qtyDeduct: {
+    color: COLORS.danger,
+  },
+  qtyRestock: {
+    color: COLORS.success,
+  },
+  actionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+  loadMoreBtn: {
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(99, 102, 241, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  loadMoreBtnDark: {
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+  },
+  loadMoreText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  textLight: {
+    color: '#f8fafc',
+  },
+  textDimmed: {
+    color: '#94a3b8',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 15,
+    color: '#64748b',
+    marginTop: 16,
+    fontWeight: '500',
+  },
 });

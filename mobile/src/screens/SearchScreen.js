@@ -10,23 +10,31 @@ import {
   Animated,
   TouchableOpacity,
   RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  Platform,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { getItems } from '../api';
-import ItemCard from '../components/ItemCard';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { commonStyles, COLORS, SPACING, BORDER_RADIUS } from '../styles/common';
 
 const PAGE_SIZE = 10;
 const CACHE_ITEMS_KEY = 'search_cached_items';
 
-// Deep equality
+// Deep equality helper
 const deepEqual = (a, b) => {
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (typeof a !== 'object' || typeof b !== 'object') return false;
+  
   const keysA = Object.keys(a);
   const keysB = Object.keys(b);
   if (keysA.length !== keysB.length) return false;
+  
   for (const key of keysA) {
     if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
   }
@@ -66,20 +74,20 @@ export default function SearchScreen({ navigation, route }) {
   const startFadeIn = () => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 600,
       useNativeDriver: true,
     }).start();
   };
 
-  // Silent background refresh
+  // Background refresh
   const backgroundRefresh = useCallback(async () => {
     if (refreshing || loading) return;
     setRefreshing(true);
-
+    
     try {
       const items = await getItems();
       const safeItems = Array.isArray(items) ? items : [];
-
+      
       if (!deepEqual(allItems, safeItems)) {
         setAllItems(safeItems);
         await saveToCache(safeItems);
@@ -97,7 +105,7 @@ export default function SearchScreen({ navigation, route }) {
     try {
       const items = await getItems();
       const safeItems = Array.isArray(items) ? items : [];
-
+      
       setAllItems(safeItems);
       await saveToCache(safeItems);
     } catch (error) {
@@ -111,7 +119,7 @@ export default function SearchScreen({ navigation, route }) {
   const loadItems = useCallback(async () => {
     setLoading(true);
     const cached = await loadFromCache();
-
+    
     if (Array.isArray(cached)) {
       setAllItems(cached);
       setFiltered(cached);
@@ -119,11 +127,11 @@ export default function SearchScreen({ navigation, route }) {
       setLoading(false);
       startFadeIn();
     }
-
+    
     try {
       const items = await getItems();
       const safeItems = Array.isArray(items) ? items : [];
-
+      
       if (!deepEqual(cached, safeItems)) {
         setAllItems(safeItems);
         await saveToCache(safeItems);
@@ -140,7 +148,7 @@ export default function SearchScreen({ navigation, route }) {
     loadItems();
   }, [loadItems]);
 
-  // Auto-refresh every 30s
+  // Auto background refresh every 30s
   useEffect(() => {
     const interval = setInterval(backgroundRefresh, 30000);
     return () => clearInterval(interval);
@@ -166,114 +174,353 @@ export default function SearchScreen({ navigation, route }) {
     }
   };
 
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Item renderer with inline card
+  const renderItem = ({ item }) => {
+    const isOutOfStock = item.stock <= 0;
+
+    return (
+      <TouchableOpacity
+        style={[commonStyles.card, isDarkMode && commonStyles.cardDark, styles.itemCard]}
+        onPress={() => navigation.navigate('Deduct', { 
+          preselectedItem: item, 
+          employeeId, 
+          employeeName 
+        })}
+        activeOpacity={0.8}
+        disabled={isOutOfStock}
+      >
+        <View style={styles.itemContent}>
+          <View style={styles.itemLeft}>
+            <View style={[styles.itemIcon, { backgroundColor: isOutOfStock ? COLORS.text.secondary : COLORS.primary }]}>
+              <Ionicons name="cube-outline" size={24} color={COLORS.text.light} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={[styles.itemName, isDarkMode && commonStyles.textDark]}>
+                {item.name}
+              </Text>
+              <Text style={[styles.itemCategory, isDarkMode && commonStyles.textSecondaryDark]}>
+                {item.category || 'Uncategorized'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.itemRight}>
+            <Text style={[styles.itemStock, isOutOfStock && styles.outOfStock]}>
+              {item.stock}
+            </Text>
+          </View>
+        </View>
+        {isOutOfStock && (
+          <View style={styles.outOfStockBadge}>
+            <Text style={styles.outOfStockText}>Out of Stock</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   // Loading UI
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, isDarkMode && styles.loadingContainerDark]}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={[styles.loadingText, isDarkMode && styles.loadingTextDark]}>
-          Loading from cache…
-        </Text>
-      </View>
+      <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size={50} color={COLORS.primary} />
+          <Text style={[styles.loadingText, isDarkMode && commonStyles.textSecondaryDark]}>
+            Loading items…
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, isDarkMode && styles.titleDark]}>
-          Search Items
-        </Text>
-        <TouchableOpacity onPress={toggleTheme}>
-          <Ionicons
-            name={isDarkMode ? 'sunny' : 'moon'}
-            size={24}
-            color={isDarkMode ? '#fff' : '#1f2937'}
-          />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+            <ScrollView style={commonStyles.container}>
+              {/* Header */}
+              <View style={styles.header}>
+                <View style={styles.headerLeft}>
+                  <TouchableOpacity onPress={() => navigation.goBack()}>
+                    <Ionicons name="arrow-back" size={24} color={isDarkMode ? COLORS.text.dark : COLORS.text.primary} />
+                  </TouchableOpacity>
+                  <View>
+                    <Text style={[styles.title, isDarkMode && commonStyles.titleDark]}>
+                      Search Items
+                    </Text>
+                    <Text style={[styles.subtitle, isDarkMode && commonStyles.subtitleDark]}>
+                      Find items to deduct
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={toggleTheme} style={styles.themeToggle}>
+                  <Ionicons
+                    name={isDarkMode ? 'sunny' : 'moon'}
+                    size={24}
+                    color={isDarkMode ? COLORS.text.dark : COLORS.text.primary}
+                  />
+                </TouchableOpacity>
+              </View>
 
-      {/* Subtle Refresh Badge (background sync) */}
-      {refreshing && !loading && (
-        <View style={styles.refreshBadge}>
-          <ActivityIndicator size="small" color="#fff" />
-          <Text style={styles.refreshText}>Updating…</Text>
-        </View>
-      )}
+              {/* Refreshing Badge */}
+              {refreshing && !loading && (
+                <View style={[commonStyles.badge, styles.refreshBadge]}>
+                  <ActivityIndicator size="small" color={COLORS.text.light} />
+                  <Text style={commonStyles.badgeText}>Updating…</Text>
+                </View>
+              )}
 
-      {/* Search */}
-      <View style={[styles.searchContainer, isDarkMode && styles.searchContainerDark]}>
-        <Ionicons name="search" size={20} color={isDarkMode ? '#9ca3af' : '#6b7280'} />
-        <TextInput
-          placeholder="Search items by name or category..."
-          placeholderTextColor={isDarkMode ? '#9ca3af' : '#6b7280'}
-          value={query}
-          onChangeText={setQuery}
-          style={[styles.input, isDarkMode && styles.inputDark]}
-        />
-      </View>
+              {/* Search */}
+              <View style={[commonStyles.input, isDarkMode && commonStyles.inputDark, styles.searchBox]}>
+                <Ionicons name="search" size={20} color={isDarkMode ? COLORS.text.tertiary : COLORS.text.secondary} />
+                <TextInput
+                  placeholder="Search items by name or category..."
+                  placeholderTextColor={isDarkMode ? COLORS.text.tertiary : COLORS.text.secondary}
+                  value={query}
+                  onChangeText={setQuery}
+                  style={styles.searchInput}
+                />
+              </View>
 
-      {/* Items List with Pull-to-Refresh */}
-      <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-        <FlatList
-          ref={flatListRef}
-          data={paginated}
-          keyExtractor={item => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={[styles.itemCardContainer, isDarkMode && styles.itemCardContainerDark]}>
-              <ItemCard
-                item={item}
-                onPress={() => navigation.navigate('Deduct', { preselectedItem: item, employeeId, employeeName })}
-                showDeductButton
-                onDeduct={() => navigation.navigate('Deduct', { preselectedItem: item, employeeId, employeeName })}
+              {/* Stats */}
+              {filtered.length > 0 && (
+                <View style={[commonStyles.card, isDarkMode && commonStyles.cardDark, styles.statsCard]}>
+                  <View style={styles.statItem}>
+                    <Text style={[styles.statLabel, isDarkMode && commonStyles.textSecondaryDark]}>Results</Text>
+                    <Text style={[styles.statValue, isDarkMode && commonStyles.textDark]}>{filtered.length}</Text>
+                  </View>
+                  <View style={[styles.statDivider, isDarkMode && commonStyles.dividerDark]} />
+                  <View style={styles.statItem}>
+                    <Text style={[styles.statLabel, isDarkMode && commonStyles.textSecondaryDark]}>Page</Text>
+                    <Text style={[styles.statValue, isDarkMode && commonStyles.textDark]}>{page}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Items List */}
+              <FlatList
+                ref={flatListRef}
+                data={paginated}
+                keyExtractor={item => item.id.toString()}
+                renderItem={renderItem}
+                style={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onPullRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                    progressBackgroundColor={isDarkMode ? COLORS.card.dark : COLORS.card.light}
+                  />
+                }
+                ListEmptyComponent={
+                  <View style={commonStyles.emptyState}>
+                    <Ionicons name="search" size={60} color={COLORS.text.secondary} />
+                    <Text style={[commonStyles.emptyStateText, isDarkMode && commonStyles.emptyStateTextDark]}>
+                      No items found
+                    </Text>
+                    {query.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.clearSearchBtn}
+                        onPress={() => setQuery('')}
+                      >
+                        <Text style={[styles.clearSearchText, isDarkMode && commonStyles.textDark]}>
+                          Clear search
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                }
               />
-            </View>
-          )}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onPullRefresh}
-              colors={['#6366f1']}
-              tintColor="#6366f1"
-              progressBackgroundColor={isDarkMode ? '#374151' : '#ffffff'}
-            />
-          }
-          ListEmptyComponent={
-            <Text style={[styles.emptyText, isDarkMode && styles.emptyTextDark]}>
-              No items found.
-            </Text>
-          }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          contentContainerStyle={paginated.length === 0 ? { flex: 1, justifyContent: 'center' } : { paddingBottom: 40 }}
-        />
-      </Animated.View>
-    </View>
+
+              {/* Load More Button */}
+              {page * PAGE_SIZE < filtered.length && (
+                <TouchableOpacity 
+                  style={[styles.loadMoreBtn, isDarkMode && styles.loadMoreBtnDark]} 
+                  onPress={handleLoadMore}
+                >
+                  <Text style={[styles.loadMoreText, isDarkMode && commonStyles.textDark]}>
+                    Load More ({filtered.length - page * PAGE_SIZE} remaining)
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-// Styles
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#f3f4f6' },
-  containerDark: { backgroundColor: '#1f2937' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1f2937' },
-  titleDark: { color: '#f9fafb' },
-  refreshBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#6366f1', alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 16 },
-  refreshText: { color: '#fff', marginLeft: 8, fontWeight: '600' },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: '#e5e7eb', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  searchContainerDark: { backgroundColor: '#374151', borderColor: '#4b5563' },
-  input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#1f2937' },
-  inputDark: { color: '#f9fafb' },
-  emptyText: { color: '#6b7280', textAlign: 'center', fontSize: 16, marginTop: 30 },
-  emptyTextDark: { color: '#9ca3af' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
-  loadingContainerDark: { backgroundColor: '#1f2937' },
-  loadingText: { marginTop: 12, fontSize: 16, color: '#1f2937' },
-  loadingTextDark: { color: '#f9fafb' },
-  itemCardContainer: { backgroundColor: '#ffffff', borderRadius: 12, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#6366f1', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
-  itemCardContainerDark: { backgroundColor: '#374151', borderLeftColor: '#818cf8' },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  themeToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  refreshBadge: {
+    marginBottom: SPACING.md,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: SPACING.sm,
+  },
+  statsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: SPACING.md,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginTop: SPACING.xs,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: COLORS.border.light,
+    height: 40,
+  },
+  list: {
+    flex: 1,
+  },
+  itemCard: {
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  itemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  itemIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  itemCategory: {
+    fontSize: 13,
+  },
+  itemRight: {
+    alignItems: 'center',
+  },
+  itemStock: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.primary,
+    backgroundColor: `${COLORS.primary}15`,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  outOfStock: {
+    color: COLORS.text.secondary,
+    backgroundColor: 'transparent',
+  },
+  outOfStockBadge: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+  },
+  outOfStockText: {
+    color: COLORS.text.light,
+    fontSize: 10,
+    fontWeight: '600',
+    backgroundColor: COLORS.danger,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  clearSearchBtn: {
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+  },
+  clearSearchText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  loadMoreBtn: {
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.card.light,
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  loadMoreBtnDark: {
+    backgroundColor: COLORS.card.dark,
+    borderColor: COLORS.border.dark,
+  },
+  loadMoreText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
