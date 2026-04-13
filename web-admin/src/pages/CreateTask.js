@@ -12,6 +12,7 @@ import {
   Spinner,
   Alert,
 } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 import { getItems, getTasks, addTask, updateTask, deleteTask, getEmployees } from '../api';
 import DataTable from '../components/DataTable';
 
@@ -40,6 +41,8 @@ const CACHE_KEYS = {
 };
 
 const CreateTask = () => {
+  const navigate = useNavigate();
+  
   // State
   const [items, setItems] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -48,6 +51,7 @@ const CreateTask = () => {
   const [refreshing, setRefreshing] = useState(false); // background refresh
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const [formData, setFormData] = useState({
     task_id: '',
@@ -104,7 +108,7 @@ const CreateTask = () => {
     try {
       const [itemsData, tasksData, employeesData] = await Promise.all([
         getItems(),
-        getTasks(),
+        getTasks(showCompleted ? 'all' : undefined),
         getEmployees(),
       ]);
 
@@ -194,7 +198,7 @@ const CreateTask = () => {
   // Task CRUD
   const refreshTasks = async () => {
     try {
-      const fresh = await getTasks();
+      const fresh = await getTasks(showCompleted ? 'all' : undefined);
       const safe = Array.isArray(fresh) ? fresh : [];
       setTasks(safe);
       saveToCache(CACHE_KEYS.TASKS, safe);
@@ -356,6 +360,26 @@ const CreateTask = () => {
       },
     },
     {
+      field: 'done_by_list',
+      header: 'Done By',
+      render: (t) => {
+        if (!t.done_by_list?.length)
+          return <span className="text-muted">Not done yet</span>;
+        return (
+          <span>
+            {getEmployeeNames(t.done_by_list)}
+            <Badge
+              bg="success"
+              className="ms-2"
+              style={{ borderRadius: 20, padding: '6px 12px', fontWeight: 600 }}
+            >
+              {t.done_by_count}
+            </Badge>
+          </span>
+        );
+      },
+    },
+    {
       field: 'assigned_at',
       header: 'Assigned Date',
       style: { fontFamily: 'monospace', fontSize: 15, color: '#888' },
@@ -377,6 +401,17 @@ const CreateTask = () => {
       header: 'Actions',
       render: (task) => (
         <div className="d-flex gap-2">
+          <Button
+            variant="outline-info"
+            size="sm"
+            onClick={() => navigate('/history')}
+            disabled={isSubmitting}
+            style={{ borderRadius: 12 }}
+            title="View History Details"
+          >
+            <i className="fas fa-history me-1"></i>
+            <span>Details</span>
+          </Button>
           <Button
             variant="outline-primary"
             size="sm"
@@ -697,6 +732,22 @@ const CreateTask = () => {
             }}
           >
             <div className="card-body p-0">
+              <div className="d-flex justify-content-between align-items-center px-4 pt-3 pb-2">
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#6b7280' }}>
+                  {showCompleted ? 'Showing all tasks' : 'Showing active tasks only'}
+                </span>
+                <Form.Check
+                  type="switch"
+                  id="show-completed-switch"
+                  label="Show completed"
+                  checked={showCompleted}
+                  onChange={(e) => {
+                    setShowCompleted(e.target.checked);
+                    loadAllData(true);
+                  }}
+                  style={{ fontWeight: 600 }}
+                />
+              </div>
               <DataTable
                 data={tasks}
                 columns={taskColumns}
