@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, StatusBar } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TextInput, Alert, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Animated, SafeAreaView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Dimensions } from 'react-native';
+import { View, TextInput, Alert, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Animated, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { login, registerPushToken } from '../api';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
@@ -171,7 +172,7 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, isDarkMode && styles.containerDark]}>
+    <SafeAreaView style={[styles.container, isDarkMode && styles.containerDark]} edges={['top', 'left', 'right']}>
       <StatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         backgroundColor={isDarkMode ? '#0f172a' : '#f8fafc'}
