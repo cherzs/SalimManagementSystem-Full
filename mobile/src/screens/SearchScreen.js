@@ -10,13 +10,13 @@ import {
   Animated,
   TouchableOpacity,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Platform,
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getItems } from '../api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -225,7 +225,7 @@ export default function SearchScreen({ navigation, route }) {
   // Loading UI
   if (loading) {
     return (
-      <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]}>
+      <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]} edges={['top', 'left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size={50} color={COLORS.primary} />
           <Text style={[styles.loadingText, isDarkMode && commonStyles.textSecondaryDark]}>
@@ -237,7 +237,7 @@ export default function SearchScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]}>
+    <SafeAreaView style={[commonStyles.safeArea, isDarkMode && commonStyles.safeAreaDark]} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
