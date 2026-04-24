@@ -59,7 +59,7 @@ const Login = ({ onLogin }) => {
               Admin Login
             </Card.Title>
             <div style={{ color: '#888', fontSize: 15, marginTop: 2, marginBottom: 8 }}>
-              Enter your email and password
+              Enter your email and password.
             </div>
           </div>
 

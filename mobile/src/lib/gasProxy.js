@@ -1,4 +1,4 @@
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwxe1NXObpn8mkgTaD9Cc0YO-V84D32rvJe0XpEu3jobslvwEa1d9NN928e8OFH_hg/exec';
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyoDQQhpn-zuKHQ8HSn2awsti3IXaen0kCQinsPCDhjoTbl9BSgF6ZL-8rFGQX5mQzS/exec';
 const SECRET_KEY = 'yoyo';
 
 export const callAppsScriptFunction = async (functionName, payload) => {
