@@ -5,7 +5,7 @@ export const callAppsScriptFunction = async (functionName, payload) => {
   try {
     const response = await fetch(GAS_WEB_APP_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ 
         action: functionName, 
         data: payload, 
