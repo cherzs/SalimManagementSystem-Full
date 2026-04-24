@@ -40,7 +40,7 @@ export const sendTaskPushNotification = async ({ taskId, title, description, ite
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify(messages)
       });
@@ -85,7 +85,7 @@ export const sendTaskEmails = async ({ taskId, title, description, items }) => {
       'https://script.google.com/macros/s/AKfycbyoDQQhpn-zuKHQ8HSn2awsti3IXaen0kCQinsPCDhjoTbl9BSgF6ZL-8rFGQX5mQzS/exec',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'SEND_TASK_EMAIL',
           data: { emailList, subject: `New Task: ${title}`, htmlBody: emailContent },
