@@ -35,6 +35,9 @@ function doPost(e) {
 
     let result;
     switch(action) {
+      case "SEND_PUSH_DIRECT":
+        result = handleSendPushDirect(data);
+        break;
       case "SEND_TASK_NOTIFICATION":
         result = handleSendTaskNotification(ss, data);
         break;
@@ -181,6 +184,21 @@ function handleSendTaskEmail({ emailList, subject, htmlBody }) {
   }
 
   return { success: true };
+}
+
+// ========================
+// PUSH DIRECT (proxy from web-admin)
+// ========================
+function handleSendPushDirect({ messages }) {
+  if (!messages || messages.length === 0) {
+    return { success: true, message: "No messages to send" };
+  }
+
+  messages.forEach(function(msg) {
+    sendExpoNotificationDirect(msg);
+  });
+
+  return { success: true, sent: messages.length };
 }
 
 // ========================

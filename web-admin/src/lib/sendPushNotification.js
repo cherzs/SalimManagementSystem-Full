@@ -1,9 +1,12 @@
 import { supabase } from './supabaseClient';
 
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyoDQQhpn-zuKHQ8HSn2awsti3IXaen0kCQinsPCDhjoTbl9BSgF6ZL-8rFGQX5mQzS/exec';
+const SECRET = 'yoyo';
+
 export const sendTaskPushNotification = async ({ taskId, title, description, items }) => {
   const { data: employees, error } = await supabase
     .from('employees')
-    .select('id, expo_push_token, email')
+    .select('id, expo_push_token')
     .eq('role', 'employee')
     .neq('expo_push_token', null)
     .neq('expo_push_token', '');
@@ -17,39 +20,41 @@ export const sendTaskPushNotification = async ({ taskId, title, description, ite
     emp => emp.expo_push_token && emp.expo_push_token.startsWith('ExponentPushToken[')
   );
 
+  if (validEmployees.length === 0) return;
+
   const messages = validEmployees.map(emp => ({
     to: emp.expo_push_token,
     title: 'Incoming Task Call',
     body: description || 'New task assignment',
-    data: {
+    data: JSON.stringify({
       taskId,
       type: 'fake_call',
       taskTitle: title,
       taskDescription: description || '',
       employeeId: emp.id
-    },
+    }),
     priority: 'high',
     channelId: 'calls',
     sound: 'ringtone',
     _displayInForeground: true
   }));
 
-  if (messages.length > 0) {
-    try {
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'text/plain',
-        },
-        body: JSON.stringify(messages)
-      });
+  try {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'SEND_PUSH_DIRECT',
+        data: { messages },
+        secret: SECRET
+      })
+    });
 
-      const result = await response.json();
-      console.log('Push notification sent:', JSON.stringify(result));
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    console.log('Push notification sent via Apps Script:', JSON.stringify(result));
+  } catch (error) {
+    console.error('Error sending push notification:', error);
   }
 };
 
@@ -81,18 +86,15 @@ export const sendTaskEmails = async ({ taskId, title, description, items }) => {
   `;
 
   try {
-    const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyoDQQhpn-zuKHQ8HSn2awsti3IXaen0kCQinsPCDhjoTbl9BSgF6ZL-8rFGQX5mQzS/exec',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'SEND_TASK_EMAIL',
-          data: { emailList, subject: `New Task: ${title}`, htmlBody: emailContent },
-          secret: 'yoyo'
-        })
-      }
-    );
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'SEND_TASK_EMAIL',
+        data: { emailList, subject: `New Task: ${title}`, htmlBody: emailContent },
+        secret: SECRET
+      })
+    });
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json();
