@@ -1,5 +1,4 @@
 import { supabase } from './lib/supabaseClient';
-import { callAppsScriptFunction } from './lib/gasProxy';
 import { sendTaskPushNotification, sendTaskEmails } from './lib/sendPushNotification';
 
 const hashPin = async (pin) => {
