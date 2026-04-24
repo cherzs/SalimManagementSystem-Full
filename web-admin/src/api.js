@@ -1,5 +1,6 @@
 import { supabase } from './lib/supabaseClient';
 import { callAppsScriptFunction } from './lib/gasProxy';
+import { sendTaskPushNotification, sendTaskEmails } from './lib/sendPushNotification';
 
 const hashPin = async (pin) => {
   const encoder = new TextEncoder();
@@ -220,16 +221,19 @@ export const addTask = async (taskData) => {
 
   if (dbError) throw dbError;
 
-  try {
-    await callAppsScriptFunction('SEND_TASK_NOTIFICATION', {
-      taskId: newId,
-      title: taskData.title,
-      description: taskData.description || '',
-      items: taskData.items || []
-    });
-  } catch (notifError) {
-    console.error('Gagal mengirim notifikasi, tetapi task sudah tersimpan:', notifError);
-  }
+  const notificationData = {
+    taskId: newId,
+    title: taskData.title,
+    description: taskData.description || '',
+    items: taskData.items || []
+  };
+
+  sendTaskPushNotification(notificationData).catch(err =>
+    console.error('Gagal mengirim push notifikasi, tetapi task sudah tersimpan:', err)
+  );
+  sendTaskEmails(notificationData).catch(err =>
+    console.error('Gagal mengirim email notifikasi, tetapi task sudah tersimpan:', err)
+  );
 
   return insertedTask;
 };
@@ -294,16 +298,19 @@ export const updateTask = async (taskData) => {
 
   if (dbError) throw dbError;
 
-  try {
-    await callAppsScriptFunction('SEND_TASK_NOTIFICATION', {
-      taskId: task_id,
-      title,
-      description,
-      items: items || []
-    });
-  } catch (notifError) {
-    console.error('Gagal mengirim notifikasi update:', notifError);
-  }
+  const notificationData = {
+    taskId: task_id,
+    title,
+    description,
+    items: items || []
+  };
+
+  sendTaskPushNotification(notificationData).catch(err =>
+    console.error('Gagal mengirim push notifikasi update:', err)
+  );
+  sendTaskEmails(notificationData).catch(err =>
+    console.error('Gagal mengirim email notifikasi update:', err)
+  );
 
   return updatedTask;
 };

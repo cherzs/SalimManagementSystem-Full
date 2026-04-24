@@ -3,8 +3,8 @@
 // ========================
 const SHEET_ID = "1g3SBNnN_S2Vn_VfngvZ4DfKPDt1LnTVAa0u5lWjQhGs";
 const SECRET_KEY = "yoyo";
-const SUPABASE_URL = "https://nnlezmhknsetnrcewlel.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_asWrhmgneQUF57jv5wHqhw_z8XsMT93";
+const SUPABASE_URL = "https://iqhxqurpikgtkdxhkvpn.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_BaCzMjS9swu8J70s0Dz_nw_ctJOAtHQ";
 
 function getSupabaseUrl() { return SUPABASE_URL; }
 function getSupabaseAnonKey() { return SUPABASE_ANON_KEY; }
@@ -37,6 +37,9 @@ function doPost(e) {
     switch(action) {
       case "SEND_TASK_NOTIFICATION":
         result = handleSendTaskNotification(ss, data);
+        break;
+      case "SEND_TASK_EMAIL":
+        result = handleSendTaskEmail(data);
         break;
       case "SEND_LOW_STOCK_ALERT":
         result = handleSendLowStockAlert(ss, data);
@@ -150,6 +153,37 @@ function handleSendTaskNotification(ss, { taskId, title, description, items }) {
 }
 
 // ========================
+// TASK EMAIL (called from web-admin)
+// ========================
+function handleSendTaskEmail({ emailList, subject, htmlBody }) {
+  if (!emailList || emailList.length === 0) {
+    return { success: true, message: "No recipients" };
+  }
+
+  try {
+    MailApp.sendEmail({
+      to: emailList.join(","),
+      subject: subject,
+      htmlBody: htmlBody,
+      noReply: true
+    });
+    console.log("Email sent to " + emailList.length + " employees");
+  } catch (error) {
+    console.error("Failed to send group email:", error);
+
+    emailList.forEach(function(email) {
+      try {
+        MailApp.sendEmail(email, subject, "", { htmlBody: htmlBody });
+      } catch (individualError) {
+        console.error("Failed to send to " + email + ":", individualError);
+      }
+    });
+  }
+
+  return { success: true };
+}
+
+// ========================
 // LOW STOCK ALERTS
 // ========================
 function handleSendLowStockAlert(ss, { alerts, recipients }) {
@@ -190,19 +224,10 @@ function handleSendLowStockAlert(ss, { alerts, recipients }) {
 // EXPO NOTIFICATIONS
 // ========================
 function sendExpoNotification(ss, messagePayload) {
-  const employees = getSheetData(ss, "Employees");
+  sendExpoNotificationDirect(messagePayload);
+}
 
-  const recipients = employees.filter(emp =>
-    emp.expo_push_token && emp.expo_push_token.startsWith("ExponentPushToken[")
-  );
-
-  if (recipients.length === 0) {
-    console.log("No valid push tokens found");
-    return;
-  }
-
-  const messages = { ...messagePayload };
-
+function sendExpoNotificationDirect(messagePayload) {
   try {
     var response = UrlFetchApp.fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
@@ -210,7 +235,7 @@ function sendExpoNotification(ss, messagePayload) {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      payload: JSON.stringify(messages),
+      payload: JSON.stringify(messagePayload),
       muteHttpExceptions: true
     });
     var result = JSON.parse(response.getContentText());
@@ -254,14 +279,11 @@ function runTaskNotificationLoop() {
   attempt++;
   props.setProperty('notify_attempt', attempt);
 
-  const employees = getSheetData(SpreadsheetApp.openById(SHEET_ID), "Employees");
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseKey = getSupabaseAnonKey();
 
   let task = null;
-  let allRead = false;
-
   try {
-    const supabaseUrl = getSupabaseUrl();
-    const supabaseKey = getSupabaseAnonKey();
     const url = supabaseUrl + '/rest/v1/tasks?task_id=eq.' + taskId + '&select=read_by';
     const response = UrlFetchApp.fetch(url, {
       method: 'GET',
@@ -288,38 +310,56 @@ function runTaskNotificationLoop() {
     return;
   }
 
-  const readByList = (task.read_by || "").split(",").map(s => s.trim()).filter(Boolean);
-  allRead = true;
+  const readByList = (task.read_by || "").split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+  let allRead = true;
 
   employeeIds.forEach(function(empId) {
     if (!readByList.includes(empId)) {
       allRead = false;
-      const employee = employees.find(function(e) {
-        return e.id === empId && e.expo_push_token && e.expo_push_token.startsWith("ExponentPushToken[");
-      });
-      if (employee) {
-        sendExpoNotification(SpreadsheetApp.openById(SHEET_ID), {
-          to: employee.expo_push_token,
-          title: "Incoming Task Call",
-          body: "Reminder: You have an unread task",
-          data: JSON.stringify({
-            taskId: taskId,
-            type: 'fake_call',
-            taskTitle: 'Task Reminder',
-            taskDescription: "Please check your tasks",
-            employeeId: employee.id
-          }),
-          priority: 'high',
-          channelId: 'calls',
-          sound: 'ringtone',
-          _displayInForeground: true
-        });
-      }
     }
   });
 
   if (allRead || attempt >= maxAttempts) {
     cleanupTaskNotificationLoop();
+    return;
+  }
+
+  try {
+    const empUrl = supabaseUrl + '/rest/v1/employees?role=eq.employee&select=id,expo_push_token';
+    const empResponse = UrlFetchApp.fetch(empUrl, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': 'Bearer ' + supabaseKey,
+      },
+      muteHttpExceptions: true
+    });
+    const employees = JSON.parse(empResponse.getContentText());
+
+    employees.forEach(function(emp) {
+      if (!employeeIds.includes(emp.id)) return;
+      if (readByList.includes(emp.id)) return;
+      if (!emp.expo_push_token || !emp.expo_push_token.startsWith("ExponentPushToken[")) return;
+
+      sendExpoNotificationDirect({
+        to: emp.expo_push_token,
+        title: "Incoming Task Call",
+        body: "Reminder: You have an unread task",
+        data: JSON.stringify({
+          taskId: taskId,
+          type: 'fake_call',
+          taskTitle: 'Task Reminder',
+          taskDescription: "Please check your tasks",
+          employeeId: emp.id
+        }),
+        priority: 'high',
+        channelId: 'calls',
+        sound: 'ringtone',
+        _displayInForeground: true
+      });
+    });
+  } catch (e) {
+    console.error('Failed to fetch employees from Supabase:', e);
   }
 }
 
